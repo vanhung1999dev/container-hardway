@@ -1075,4 +1075,756 @@ Your browser renders page
 
 </details>
 
+<summary>Routing Table</summary>
+<details>
+# 🧭 4️⃣ Routing Table — Deep & Easy Explanation
 
+---
+
+## 💡 What Is a Routing Table?
+
+A **routing table** is like a **map** your operating system uses to decide **where to send network packets**.
+
+When your system needs to send a packet, it checks this table to figure out:
+
+- Which **network interface** to use (`eth0`, `wlan0`, etc.)
+- Which **next hop (gateway)** to forward it to
+- Whether the destination is **local** (same subnet) or **remote**
+
+---
+
+## 🧠 Analogy
+
+Think of it like sending a letter 📬:
+
+| Scenario | What Happens |
+|-----------|---------------|
+| Same neighborhood | You can deliver it directly. |
+| Different city | You give it to the post office (gateway). |
+| Unknown destination | You have no route — it’s dropped. |
+
+---
+
+## ⚙️ Routing Table Structure
+
+Each routing entry (row) usually includes:
+
+| Column | Meaning | Example |
+|---------|----------|----------|
+| **Destination** | Network/subnet the route applies to | `192.168.1.0/24` |
+| **Gateway (Next Hop)** | Where to send packets next | `192.168.1.1` |
+| **Genmask / Prefix** | Subnet mask | `255.255.255.0` or `/24` |
+| **Interface (Iface)** | Which NIC to send through | `eth0`, `wlan0` |
+| **Metric** | Priority (lower = preferred) | `100` |
+
+---
+
+## 🔍 View Your Routing Table
+
+```bash
+# Modern Linux command
+ip route
+
+# Traditional command
+route -n
+```
+
+```
+default via 192.168.1.1 dev eth0
+192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100
+172.17.0.0/16 dev docker0 scope link
+```
+
+### 🧩 Understanding Each Route
+| Route                              | Meaning                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| `default via 192.168.1.1 dev eth0` | “Send everything I don’t recognize to 192.168.1.1 (the router) via eth0.” |
+| `192.168.1.0/24 dev eth0`          | “I can directly reach all hosts in 192.168.1.x network.”                  |
+| `172.17.0.0/16 dev docker0`        | “Packets for Docker containers go through the docker0 virtual bridge.”    |
+
+
+## 🔄 How Routing Decision Works (Step-by-Step)
+
+Let’s say your machine (IP: 192.168.1.100) sends a packet to 8.8.8.8.
+
+#### 1️⃣ Kernel Looks Up Routing Table
+```
+1️⃣ Kernel Looks Up Routing Table
+```
+=> It checks all routes and matches the longest prefix (most specific route).
+
+#### 2️⃣ Route Found: Default Gateway
+No direct route to 8.8.8.8, so it matches:
+```
+default via 192.168.1.1 dev eth0
+```
+
+→ Send via router 192.168.1.1 using interface eth0.
+
+#### 3️⃣ Next Hop MAC (ARP Resolution)
+
+The system must find the MAC address of 192.168.1.1 using ARP:
+```
+Who has 192.168.1.1? Tell 192.168.1.100
+```
+
+#### 4️⃣ Packet Encapsulation
+
+The IP packet to 8.8.8.8 is wrapped in an Ethernet frame:
+```
+Dst MAC = router's MAC
+Src MAC = your NIC
+IP src = 192.168.1.100
+IP dst = 8.8.8.8
+```
+
+#### 5️⃣ NIC Sends the Packet
+- Your NIC transmits the frame.
+- The router then forwards it to the next network (based on its routing table).
+
+### 🧠 Routing Table Matching Logic
+When deciding which route to use:
+
+- Find all routes that match the destination IP.
+- Choose the one with the longest prefix (most specific match).
+- If tied, pick the one with lowest metric.
+- If still tied, the OS may choose based on route insertion order.
+
+```
+Destination     Prefix    Interface
+192.168.1.0     /24       eth0
+192.168.1.128   /25       eth1
+```
+=> → For 192.168.1.130, /25 (eth1) is chosen because it’s more specific.
+
+### 🧩 Local vs Remote Routes
+| Type                | Description             | Example                         |
+| ------------------- | ----------------------- | ------------------------------- |
+| **Local route**     | For same subnet         | `192.168.1.0/24`                |
+| **Default route**   | For everything else     | `default via 192.168.1.1`       |
+| **Host route**      | For a single IP         | `10.10.10.5/32 via 192.168.1.1` |
+| **Multicast route** | For group communication | `224.0.0.0/4`                   |
+
+### 🧱 Static vs Dynamic Routing
+
+| Type        | Description                                | Example                 |
+| ----------- | ------------------------------------------ | ----------------------- |
+| **Static**  | Manually configured (`ip route add`)       | Home computers, servers |
+| **Dynamic** | Automatically updated by routing protocols | Routers, large networks |
+
+Dynamic routing protocols:
+
+- RIP — simple, old
+- OSPF — link-state routing for LANs
+- BGP — used between ISPs on the Internet
+
+### 🧰 Commands
+| Action                         | Command Example                                  |
+| ------------------------------ | ------------------------------------------------ |
+| Show routing table             | `ip route`                                       |
+| Add new route                  | `sudo ip route add 10.10.0.0/16 via 192.168.1.1` |
+| Delete route                   | `sudo ip route del 10.10.0.0/16`                 |
+| Show routes for specific table | `ip route show table main`                       |
+| View default gateway           | `ip route show default`                          |
+
+### 📦 Example Scenario'
+
+#### 🧮 Machine Configuration
+```
+IP: 192.168.1.100/24
+Gateway: 192.168.1.1
+Interface: eth0
+```
+
+#### Routing Table
+```
+default via 192.168.1.1 dev eth0
+192.168.1.0/24 dev eth0 scope link src 192.168.1.100
+```
+
+#### Destination Cases
+| Destination  | Match          | Route           | Interface |
+| ------------ | -------------- | --------------- | --------- |
+| 192.168.1.55 | 192.168.1.0/24 | Direct          | eth0      |
+| 10.0.0.2     | default        | via 192.168.1.1 | eth0      |
+
+
+### 🧩 Visualization
+
+```
+[Application] → [TCP/IP Stack]
+          ↓
+  [Routing Table Lookup]
+          ↓
+  ├── Local Network → Send Directly (ARP)
+  └── Remote Network → Forward to Gateway
+          ↓
+       [eth0] → [Router] → [Internet]
+```
+
+### ✅ Summary
+| Concept                  | Description                                |
+| ------------------------ | ------------------------------------------ |
+| **Routing Table**        | OS “map” to decide where to send packets   |
+| **Default Gateway**      | Router used when no specific route matches |
+| **Local Route**          | Directly reachable subnet                  |
+| **Next Hop**             | The next device that will forward packets  |
+| **Metric**               | Priority among multiple routes             |
+| **Longest Prefix Match** | Most specific route wins                   |
+
+</details>
+
+<summary>Iptables / Nftables</summary>
+<details>
+# 🔥 iptables / nftables — How the Kernel Filters and Modifies Packets
+
+## 🧩 What They Are
+
+Both **iptables** and **nftables** are frameworks inside the **Linux kernel networking stack** that control **how packets are filtered, modified, or forwarded**.
+
+- **iptables** → legacy system (used for decades)
+- **nftables** → modern replacement (faster, unified, cleaner syntax)
+
+They allow administrators to:
+- **Allow / block packets** (firewall)
+- **Perform NAT** (Network Address Translation)
+- **Log or modify packets**
+- **Redirect traffic**
+- **Rate limit or mangle packets**
+
+---
+
+## ⚙️ How It Works — Inside the Kernel
+
+When a packet enters or leaves your machine, it **passes through several "hooks" in the kernel networking stack**.
+
+These hooks are controlled by **Netfilter**, the subsystem used by both iptables and nftables.
+
+### 🧱 Netfilter Hooks
+
+| Hook Point | Direction | Description |
+|-------------|------------|-------------|
+| **PREROUTING** | Incoming | Before routing decision (good for DNAT) |
+| **INPUT** | Incoming | Packet destined **for the local machine** |
+| **FORWARD** | Transit | Packet **being routed through** the machine |
+| **OUTPUT** | Outgoing | Locally generated packets |
+| **POSTROUTING** | Outgoing | After routing (good for SNAT, masquerade) |
+
+---
+
+## 🔄 Packet Flow Example
+
+Let’s say your computer acts as a router:
+```
+[eth0] ---> [PREROUTING] ---> [FORWARD] ---> [POSTROUTING] ---> [eth1]
+```
+
+Or if it’s receiving packets for itself:
+```
+[eth0] ---> [PREROUTING] ---> [INPUT] ---> [Local Process]
+```
+
+Or if it’s sending packets:
+```
+[Local Process] ---> [OUTPUT] ---> [POSTROUTING] ---> [eth0]
+```
+
+### 🧩 nftables — The Modern Way
+`nftables` replaces all iptables tables with one unified rule engine.
+
+#### Key Improvements:
+- One consistent syntax (no separate filter, mangle, etc.).
+- Rules compiled to efficient bytecode executed by kernel.
+- Atomic updates (no packet loss when changing rules).
+- Smaller and faster.
+
+```
+nft add table inet myfilter
+nft add chain inet myfilter input { type filter hook input priority 0; }
+nft add rule inet myfilter input tcp dport 22 ip saddr != 10.0.0.5 drop
+```
+
+### 🚀 Example Flow in Real Life
+Imagine:
+
+- You’re running a web server on 192.168.1.10
+- You use iptables to allow port 80 and drop everything else.
+
+```
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+iptables -A INPUT -j DROP
+```
+
+When a client sends GET /index.html:
+
+- Packet arrives on NIC → kernel triggers PREROUTING hook.
+- Routing table sees it’s for 192.168.1.10 → goes to INPUT chain.
+- iptables checks: port 80? yes → ACCEPT.
+- Kernel passes packet up to nginx.
+- nginx responds → packet passes through OUTPUT → POSTROUTING → NIC sends it out.
+
+### 🧩 Connection Tracking (conntrack)
+| State           | Description                                 |
+| --------------- | ------------------------------------------- |
+| **NEW**         | New connection request (e.g., SYN)          |
+| **ESTABLISHED** | Ongoing connection                          |
+| **RELATED**     | Related to an existing one (e.g., FTP data) |
+| **INVALID**     | Broken / malformed packet                   |
+
+```
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+```
+
+=> Allows replies for existing connections, while blocking random unsolicited packets.
+
+### 🧩 NAT Example — Masquerade
+When your Linux host connects private clients to the internet:
+```
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+```
+
+It means:
+
+- Outgoing packets from LAN → POSTROUTING.
+- Source IP replaced with your public IP (SNAT).
+- Replies are automatically rewritten back.
+
+### 🧠 Summary
+| Concept                     | Description                                   |
+| --------------------------- | --------------------------------------------- |
+| **Netfilter**               | Kernel framework for packet handling          |
+| **iptables / nftables**     | User tools that configure Netfilter           |
+| **Tables / Chains / Rules** | Define how packets are filtered or rewritten  |
+| **Hooks**                   | Integration points in kernel packet path      |
+| **conntrack**               | Tracks connection state for smarter filtering |
+| **NAT**                     | Rewrites packet source/destination IPs        |
+
+```
+[ NIC ] → PREROUTING → (routing) → INPUT or FORWARD → POSTROUTING → [ NIC ]
+                   ↑                    ↓
+             (iptables/nftables rules decide fate)
+
+```
+</details>
+
+<summary>🌐 Network Namespaces (`netns`)</summary>
+<details>
+# 🌐 Network Namespaces (`netns`)
+
+## 🧩 What It Is
+
+A **network namespace** is an **isolated copy of the Linux networking stack**.
+
+Each namespace has its own:
+- **Network interfaces** (`eth0`, `lo`, `vethXXX`)
+- **Routing table**
+- **iptables/nftables rules**
+- **/proc/net/** entries
+- **ARP cache**
+- **Socket connections**
+
+> 🧠 In short: each `netns` behaves like a separate “mini networking world” — with its own IPs, routes, and firewall rules.
+
+---
+
+## ⚙️ Why It Exists
+
+Linux namespaces isolate resources between processes — `netns` isolates **network resources**.
+
+Used in:
+- **Containers (Docker, Kubernetes)**  
+- **VPNs / Virtual networking**
+- **Testing / network simulation**
+- **Per-application isolation**
+
+---
+
+## 🧱 Analogy
+
+Imagine your computer’s network stack as a **room full of cables**.
+
+A network namespace is like **building another room** with its **own independent cables**, even though both rooms exist on the same machine.
+
+---
+
+## 🧰 Example — Creating and Inspecting a `netns`
+
+### 🧠 Step 1: Create a new namespace
+```bash
+ip netns add blue
+```
+
+=> Now you have a new isolated network world called blue.
+
+### 🧠 Step 2: List all namespaces
+```
+ip netns list
+# blue
+```
+
+### 🧠 Step 3: Check interfaces inside it
+```
+ip netns exec blue ip link
+```
+
+Output:
+```
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default
+```
+
+=> 🧩 Only the loopback interface (lo) exists by default — meaning this namespace can only talk to itself.
+
+## 🧩 Connecting Namespaces Together (via veth pairs)
+`A veth pair acts like a virtual cable — two interfaces connected back-to-back.`
+
+```
+ip link add veth-blue type veth peer name veth-host
+ip link set veth-blue netns blue
+ip addr add 10.0.0.1/24 dev veth-host
+ip netns exec blue ip addr add 10.0.0.2/24 dev veth-blue
+ip link set veth-host up
+ip netns exec blue ip link set veth-blue up
+```
+
+Now:
+
+- `veth-host` is in the root namespace (your main system)
+- `veth-blue` is inside the blue namespace
+
+They can ping each other:
+```
+ip netns exec blue ping 10.0.0.1
+```
+
+You’ve just created an isolated network environment connected to your main system — exactly how Docker containers connect to your host.
+
+## 🧠 Each netns Has Its Own Routing Table
+Inside `blue`:
+```
+ip netns exec blue ip route
+```
+Output:
+```
+10.0.0.0/24 dev veth-blue proto kernel scope link src 10.0.0.2
+```
+
+### 🧠 Behind the Scenes — File Descriptors
+Each namespace is represented in `/var/run/netns/` or `/proc/[pid]/ns/net.`
+
+
+### 🧭 Summary
+| Concept                          | Description                         |
+| -------------------------------- | ----------------------------------- |
+| **Network Namespace**            | Isolated instance of network stack  |
+| **veth pair**                    | Virtual cable between namespaces    |
+| **Routing Table, ARP, iptables** | Unique per namespace                |
+| **Use cases**                    | Containers, VPNs, network isolation |
+| **Tools**                        | `ip netns`, `nsenter`, `ip link`    |
+
+```
+                ┌───────────────────────┐
+                │       Root netns      │
+                │  eth0  docker0        │
+                │    ↑        ↑         │
+                │    │        │         │
+                │  veth-host  │         │
+                └────┬────────┘         │
+                     │
+             (veth pair - virtual cable)
+                     │
+                ┌────┴────────┐
+                │   netns blue │
+                │   veth-blue  │
+                │   lo         │
+                └──────────────┘
+```
+Each namespace = separate networking world.
+veth connects them together.
+iptables/nftables rules apply per namespace.
+
+</details>
+
+
+<summary>Virtual Interface</summary>
+<details>
+# 🌐 Virtual Network Interfaces
+
+## 🧩 What They Are
+
+A **virtual interface** is a **software-defined network interface** — it behaves like a real NIC (Network Interface Card), but exists **entirely in software**, with no physical hardware.
+
+Linux treats these interfaces just like physical ones (`eth0`, `wlan0`), but they are **created and managed by the kernel or network tools** to serve special purposes (bridging, tunneling, container networking, etc.).
+
+---
+
+## 🧱 Types of Virtual Interfaces
+
+| Type | Description | Example Use Case |
+|------|--------------|------------------|
+| **lo (loopback)** | Interface that sends packets to itself | Localhost communication |
+| **veth (virtual Ethernet pair)** | Two linked interfaces acting like a virtual cable | Connect containers or namespaces |
+| **bridge (br0)** | Software switch that connects multiple interfaces | Docker bridge, VMs |
+| **tun/tap** | Virtual point-to-point interface for tunneling | VPNs (OpenVPN, WireGuard) |
+| **bond (bond0)** | Combine multiple NICs for redundancy or throughput | High-availability servers |
+| **macvlan / ipvlan** | Create multiple virtual interfaces with unique MAC/IPs on one NIC | Container networking |
+| **docker0, cni0** | Bridges automatically created by container runtimes | Docker, Kubernetes networking |
+
+---
+
+## 🧠 Why Virtual Interfaces Exist
+
+They provide **network flexibility without hardware** — enabling:
+- Containers and VMs to have their own interfaces
+- Virtual switches, routers, and tunnels
+- Custom routing and traffic control setups
+- VPNs and overlay networks
+- Testing environments
+
+---
+
+## ⚙️ 1️⃣ The Loopback Interface (`lo`)
+
+**Every Linux system** has a loopback interface:
+
+```bash
+ip addr show lo
+```
+
+Output:
+```
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536
+    inet 127.0.0.1/8 scope host lo
+```
+
+- It’s always up.
+- Used for local communication (e.g., applications talking to each other via localhost).
+- Packets sent to 127.0.0.1 never leave your machine — they go straight from the application back into the kernel.
+
+### 🧩 Example:
+```
+ping 127.0.0.1
+```
+
+→ ICMP packets are sent from your system to itself.
+
+
+### ⚙️ 2️⃣ Virtual Ethernet (veth) Pairs
+A veth pair works like a patch cable — packets entering one side come out the other.
+```
+ip link add veth-a type veth peer name veth-b
+ip link set veth-a up
+ip link set veth-b up
+```
+Now, traffic sent to veth-a appears on veth-b, and vice versa.
+
+Common use: </br>
+
+- One end in the root namespace
+- The other in a network namespace (container)
+
+```
+ip netns add ns1
+ip link set veth-b netns ns1
+ip addr add 10.0.0.1/24 dev veth-a
+ip netns exec ns1 ip addr add 10.0.0.2/24 dev veth-b
+ip link set veth-a up
+ip netns exec ns1 ip link set veth-b up
+```
+Now both sides can ping each other:
+```
+ip netns exec ns1 ping 10.0.0.1
+```
+
+
+### ⚙️ 3️⃣ Bridge Interface (br0)
+A bridge acts like a virtual switch — it connects multiple interfaces together at Layer 2 (Ethernet).
+
+```
+ip link add name br0 type bridge
+ip link set br0 up
+ip link set veth-a master br0
+```
+
+Now, veth-a is connected to the software bridge br0. <br>
+
+Used in: </br>
+- Docker: the docker0 bridge connects containers to each other and the host.
+- KVM: VMs connect to bridges for LAN-like access.
+
+### 🧩 Real-World Example — Docker Network
+When you run:
+```
+docker run -d nginx
+```
+
+Docker creates:
+
+- veth pair connecting container → docker0 bridge
+- Inside container: eth0 (one end of veth)
+- On host: vethXXXX (other end)
+- NAT rules via iptables for Internet access
+
+
+### 🧠 Visual Overview
+```
+                     +------------------------+
+                     |      Host Network      |
+                     |                        |
+                     |  eth0   docker0 (br0)  |
+                     |    |          ↑        |
+                     |    |       veth pair   |
+                     +----|----------|--------+
+                          |          |
+                    [veth-container] [veth-host]
+                          ↓
+                  +----------------+
+                  |   Container     |
+                  |   eth0: 172.17.0.2 |
+                  +----------------+
+
+```
+
+</details>
+
+<summary>Socket Layer</summary>
+<details>
+# 🧩 Socket Layer (Layer Between User Space and Kernel Networking)
+
+## 🌐 What It Is
+
+The **Socket Layer** is the **bridge between user space (applications)** and the **kernel network stack**.  
+It’s the interface that lets programs send and receive data over a network — **without needing to know the low-level details** of Ethernet, IP, or TCP.
+
+Every network program (like `curl`, `nginx`, `ssh`, `ping`) uses **sockets** to talk to the network.
+
+---
+
+## ⚙️ How It Works — High Level
+
+When your application calls `socket()`, the kernel:
+1. **Allocates a socket structure** in kernel space.
+2. **Binds it** to a protocol (e.g., TCP, UDP, raw IP).
+3. **Connects** it to a local IP:port and possibly a remote IP:port.
+4. **Handles all send/receive operations** through the network stack.
+
+User space only sees a **file descriptor (FD)** — but the kernel manages everything under the hood.
+
+---
+
+## 🧠 Analogy
+
+Think of the socket as a **mailbox slot**:
+- You put a message (packet) in it (`send()`).
+- The post office (kernel) routes it to the correct destination.
+- You can receive messages (`recv()`) from it.
+
+---
+
+## 🧩 Socket Lifecycle — Step by Step
+
+Let’s walk through what happens when an app opens a TCP connection.
+
+### 1️⃣ `socket()`
+
+Creates a socket:
+```c
+int fd = socket(AF_INET, SOCK_STREAM, 0);
+```
+
+- AF_INET → IPv4
+- SOCK_STREAM → TCP (reliable stream)
+- Returns a file descriptor (like an open file)
+- 🧠 The kernel allocates a struct socket and struct sock internally.
+
+
+### 2️⃣ bind()
+- Binds the socket to an IP address and port:
+
+```
+bind(fd, {ip: 192.168.1.10, port: 8080});
+```
+
+Registers:
+
+- Local IP
+- Local port
+- Protocol type
+
+### 3️⃣ listen() (for servers)
+
+```
+listen(fd, 128);
+```
+The kernel moves it into a listening state, ready to accept connections.
+
+### 4️⃣ connect() (for clients)
+
+```
+Initiates a connection to a remote socket:
+connect(fd, {ip: 10.0.0.5, port: 80});
+```
+
+### 5️⃣ accept() (for servers)
+Server accepts incoming connection:
+```
+int conn_fd = accept(fd, ...);
+```
+
+Kernel:
+
+- Creates a new socket for this connection.
+- Keeps original socket in listening state.
+
+Now the server can read/write on conn_fd.
+
+### 6️⃣ send() / recv()
+
+- User space: provides data buffer.
+- Kernel: copies data from user → kernel memory.
+- TCP/UDP layers: handle fragmentation, retransmission, checksums.
+- NIC driver: sends packets to network card.
+
+Incoming packets:
+
+- NIC triggers interrupt → kernel network stack → finds socket → copies data → user buffer (recv() returns).
+- 🧠 Every socket FD has a receive buffer and send buffer managed by the kernel.
+
+### 7️⃣ close()
+```
+close(fd);
+```
+
+### 🔄 Relationship to the Kernel Network Stack
+```
+┌──────────────────────────────┐
+│      User-space App          │
+│ ┌──────────────────────────┐ │
+│ │ socket(), send(), recv() │ │
+└─┴──────────────────────────┘─┘
+            │  (syscalls)
+            ▼
+┌──────────────────────────────┐
+│   Socket Layer (Kernel API)  │
+│ - struct socket / sock       │
+│ - protocol dispatch (TCP/UDP)│
+└────────────┬─────────────────┘
+             ▼
+┌──────────────────────────────┐
+│   Protocol Stack (TCP/IP)    │
+│   Routing / Netfilter / ARP  │
+└────────────┬─────────────────┘
+             ▼
+┌──────────────────────────────┐
+│   Network Driver / NIC       │
+└──────────────────────────────┘
+```
+
+### 🔍 Example — TCP Server Flow
+```
+Server:
+socket() → bind() → listen() → accept() → read()/write() → close()
+
+Client:
+socket() → connect() → read()/write() → close()
+```
+</details>
