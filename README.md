@@ -636,4 +636,443 @@ echo THAWED > /sys/fs/cgroup/freezer/testgroup/freezer.state
 
 </details>
 
+## Network basic
+<summary>Network Interface</summary>
+<details>
+# 🧩 1️⃣ Network Interfaces — Deep & Easy Explanation
+
+---
+
+## 💡 What Is a Network Interface
+
+A **network interface** is like a “door” your computer uses to talk to the outside world (or to itself).  
+Each “door” has a **name**, **address**, and **rules** about how data goes through it.
+
+Your system can have:
+
+| Type | Example | Description |
+|------|----------|--------------|
+| **Physical Interface** | `eth0`, `wlan0` | Actual hardware (Ethernet port, Wi-Fi card). |
+| **Virtual Interface** | `lo`, `docker0`, `vethabc123` | Software-created interfaces (for local or container networking). |
+
+---
+
+## 🧠 Analogy
+
+- Your computer → 🏢 **Building**  
+- Interface → 🚪 **Door**  
+- IP address → 📮 **Door number**  
+- MAC address → 🔢 **Door’s unique serial number**  
+- Packets → ✉️ **Letters** going in/out of each door  
+
+---
+
+## ⚙️ How It Works (Step-by-Step)
+
+### 🌍 Example: Opening `https://example.com` in Browser
+
+#### 1️⃣ Application → Kernel
+- Browser sends request:
+
+```
+GET / HTTP/1.1
+Host: example.com
+```
+
+- The kernel’s **TCP/IP stack** adds layers:
+- TCP → adds ports, sequence numbers.
+- IP → adds source & destination IPs.
+- Ethernet → adds MAC addresses.
+
+---
+
+#### 2️⃣ Kernel Chooses Interface
+
+The **routing table** decides which interface to use.
+
+Example:
+```bash
+$ ip route
+default via 192.168.1.1 dev eth0
+192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100
+```
+
+➡️ The kernel sees the destination is not local,
+so it sends packets through eth0 (your Ethernet interface).
+
+### 3️⃣ Driver & NIC
+
+- The kernel gives the packet to the driver for eth0.
+- The NIC (Network Interface Card) turns it into electrical or radio signals and transmits it to your router/switch.
+
+### 📥 Incoming Packets (Receiving)
+
+- When a packet comes in:
+- NIC receives signal from the network.
+- NIC raises an interrupt → “Hey, data arrived!”
+- The driver copies it into a kernel buffer (skb).
+-The network stack processes it layer by layer:
+- Ethernet → IP → TCP.
+- 
+The packet is finally delivered to the application socket.
+
+### 📦 Example: Loopback Interface (lo)
+- Interface name: lo
+- IP: 127.0.0.1
+- Used to communicate with yourself.
+
+When you run:
+```
+curl http://127.0.0.1:8080
+```
+
+Flow:
+```
+Browser → Kernel → lo → Kernel → Local Server
+```
+
+=> No physical network used — everything stays inside your system.
+
+### 🐳 Example: Docker Virtual Interfaces
+When Docker runs, it creates virtual interfaces.
+
+```
+$ ip link
+3: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 ...
+4: vethabcd1234@if5: <BROADCAST,MULTICAST,UP,LOWER_UP> ...
+```
+
+- docker0 → acts like a virtual switch.
+- Each container gets a veth pair:
+      - One side in container (eth0 inside container)
+      - One side in host (vethXYZ)
+
+Flow:
+```
+Container → eth0 (vethA) → vethB (host) → docker0 bridge → eth0 → Internet
+```
+=> This is how containers communicate with each other and the outside network.
+
+### Important Interface Attributes
+| Attribute       | Meaning                           | Example             |
+| --------------- | --------------------------------- | ------------------- |
+| **MAC Address** | Unique hardware ID (Layer 2)      | `00:1a:2b:3c:4d:5e` |
+| **IP Address**  | Logical network address (Layer 3) | `192.168.1.100`     |
+| **MTU**         | Max packet size (bytes)           | `1500`              |
+| **State**       | Interface active/inactive         | `UP`, `DOWN`        |
+
+### Putting It All Together
+```
+[Browser] 
+   ↓
+[Socket API]
+   ↓
+[TCP/IP Stack]
+   ↓
+[Routing Table → Chooses Interface]
+   ↓
+[eth0 Driver]
+   ↓
+[NIC → Converts to Signal]
+   ↓
+[Switch/Router → Internet]
+
+```
+
+## ✅ Summary
+| Concept                | Description                                             |
+| ---------------------- | ------------------------------------------------------- |
+| **Interface**          | “Door” connecting your system to a network.             |
+| **Driver**             | Translates between kernel packets and hardware signals. |
+| **NIC**                | Physical hardware for sending/receiving.                |
+| **Virtual Interfaces** | Software-based interfaces for containers/VPNs.          |
+| **Loopback (`lo`)**    | Local-only interface for internal communication.        |
+
+</details>
+
+<summary>Loopback Interface LO</summary>
+<details>
+## 2️⃣ Loopback Interface (`lo`)
+
+### 🧩 What It Is
+The **loopback interface (`lo`)** is a **virtual network device** that exists purely in software.  
+It allows a computer to communicate **with itself** using the **same networking stack** used for real network communication.
+
+- **Device name:** `lo`
+- **IP address:** `127.0.0.1`
+- **Network:** `127.0.0.0/8` (entire range reserved for loopback)
+- **MAC address:** none (no Layer 2 hardware)
+- **Scope:** Local (never leaves host)
+- **Purpose:** Internal communication, debugging, and service binding.
+
+---
+
+### 🧠 Why Loopback Exists
+
+Without `lo`, your machine couldn’t talk to itself using TCP/IP protocols.  
+The loopback device provides:
+- A **consistent interface** for testing network applications.
+- A **local target** for processes that communicate via sockets (e.g., a web server and browser on the same host).
+- A way to **use all network layers** (TCP, IP) without actual hardware transmission.
+
+Example:
+
+```
+curl http://127.0.0.1:8080
+```
+
+Here, your browser (client) and local server (server) use **the same TCP/IP stack**, just routed internally through `lo`.
+
+---
+
+### ⚙️ How It Works — Packet Flow (Inside Kernel)
+
+#### 1️⃣ Application Layer
+- Process A (client) creates a socket and calls `connect("127.0.0.1", 8080)`.
+- Process B (server) is already bound to `127.0.0.1:8080` and listening.
+
+#### 2️⃣ Socket & TCP Layer
+- TCP builds a SYN packet.
+- The packet is given a source IP `127.0.0.1` and destination IP `127.0.0.1`.
+
+#### 3️⃣ Routing Decision
+The **routing table** is checked:
+
+```
+$ ip route
+127.0.0.0/8 dev lo scope link
+```
+
+→ The kernel decides that packets to 127.0.0.0/8 should go through `lo`.
+
+#### 4️⃣ Transmission (TX Path)
+- The packet enters the **loopback driver** (`drivers/net/loopback.c` in Linux).
+- Instead of going to a physical NIC, it is immediately **re-injected** into the receive path (RX) of the same kernel.
+- The **skb (socket buffer)** is cloned and queued for the receive handler.
+
+#### 5️⃣ Reception (RX Path)
+- The packet is handed back to the kernel’s IP input function (`ip_input()`).
+- It is routed to the socket listening on `127.0.0.1:8080`.
+- The receiving process (server) gets the data via `recv()`.
+
+#### 6️⃣ Response
+- The reverse happens for the reply packet (server → client), all within the same memory space.
+
+---
+
+### 🧩 Key Insight: No Hardware, No Interrupts
+- No DMA (Direct Memory Access)
+- No PHY/MAC layer
+- No real transmission queue
+- Everything happens in **software** inside the kernel.
+
+So packets move like:
+```
+App → Socket → TCP → IP → lo driver → IP → Socket → App
+```
+
+No physical wire, no real NIC.
+
+---
+
+### 🔍 Example with Tools
+
+#### Routing & Interface
+```
+$ ip addr show lo
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default
+inet 127.0.0.1/8 scope host lo
+```
+
+#### Packet Capture
+```
+sudo tcpdump -i lo
+```
+You will actually see TCP packets (SYN, ACK, DATA), but **they never leave the machine**.
+
+### 🧩 In Network Namespaces
+Each `netns` (container or isolated env) gets its **own `lo` interface**.
+
+By default, it is **down** when a new namespace is created:
+
+</details>
+
+<summary>Network Stack</summary>
+<details>
+# 🌐 3️⃣ Network Stack Layers — Deep & Easy Explanation
+
+---
+
+## 🧩 What Is the Network Stack?
+
+The **network stack** is the set of software layers that handle how data travels  
+from your **application** to the **physical network** (and back).
+
+Each layer adds or removes information (called **headers**) to help the next layer  
+understand **where** the data should go and **how** it should be handled.
+
+---
+
+## 🧱 The OSI Model (7 Layers)
+
+| Layer | Name | Example Protocols | Role |
+|-------|------|-------------------|------|
+| 7 | **Application** | HTTP, FTP, SSH, DNS | What you actually use (apps talk here) |
+| 6 | **Presentation** | SSL/TLS, JSON, JPEG | Data formatting & encryption |
+| 5 | **Session** | NetBIOS, RPC | Manage sessions/connections |
+| 4 | **Transport** | TCP, UDP | Reliable or fast delivery |
+| 3 | **Network** | IP, ICMP | Routing between machines |
+| 2 | **Data Link** | Ethernet, ARP | Communication between devices on same network |
+| 1 | **Physical** | Fiber, Copper, Wi-Fi | Actual electrical/radio signals |
+
+---
+
+## 🧩 TCP/IP Model (Used in Real OS)
+
+Modern systems simplify the OSI model into **4 layers**:
+
+| TCP/IP Layer | Corresponding OSI Layers | Example Protocols | Description |
+|---------------|--------------------------|-------------------|--------------|
+| **Application** | 5–7 | HTTP, DNS, SMTP | User-level communication |
+| **Transport** | 4 | TCP, UDP | Ports, reliability, flow control |
+| **Internet** | 3 | IP, ICMP | Logical addressing & routing |
+| **Link** | 1–2 | Ethernet, ARP, Wi-Fi | Physical & local network access |
+
+---
+
+## ⚙️ How Data Flows (Concrete Example)
+
+Let’s say you open your browser and visit `https://example.com`.
+
+### 🖥️ Application Layer
+Your browser (client) sends:
+```
+GET / HTTP/1.1
+Host: example.com
+```
+
+➡️ Uses **HTTP (port 443)**, **TLS** for encryption.
+
+---
+
+### 🚦 Transport Layer
+- Browser opens a **TCP connection** (a “virtual wire” between two IPs/ports).
+- TCP ensures:
+  - **Reliable delivery**
+  - **Order preservation**
+  - **Retransmission** if packets lost
+
+Example:
+- Source Port: 52344
+- Destination Port: 443
+- Flags: SYN, ACK, etc.
+
+
+If you use UDP (e.g., for DNS or streaming), it just sends — **no reliability**.
+
+---
+
+### 🌍 Internet Layer
+- Adds **IP header**:
+  - Source IP: your device
+  - Destination IP: server’s IP
+- Decides route using **routing table**.
+- Uses **ICMP** for error and diagnostic messages (like `ping`).
+
+Example:
+```
+IP src=192.168.1.100 dst=93.184.216.34
+```
+
+
+---
+
+### 🔌 Link Layer
+Converts IP packet into **Ethernet frame**:
+```
+[Dst MAC][Src MAC][Type=IPv4][Payload][CRC]
+```
+- Uses **ARP (Address Resolution Protocol)** to find destination MAC:
+
+Who has 192.168.1.1? Tell 192.168.1.100 
+- Sends data to NIC (Network Interface Card), which converts bits into signals.
+
+---
+
+### 📡 Physical Layer
+- NIC sends electrical (Ethernet) or radio (Wi-Fi) signals.
+- Switches/routers forward them until they reach destination.
+
+At the server side, the process **reverses**:
+```
+Signal → Ethernet → IP → TCP → HTTP → Web server
+```
+
+
+---
+
+## 📦 Packet Encapsulation Example
+
+Every layer **wraps** the data with its own header — like putting a letter in envelopes:
+```
+[Ethernet Header]
+[IP Header]
+[TCP Header]
+[HTTP Data]
+```
+
+
+When receiving, each layer **unwraps** its part and passes the rest upward.
+
+---
+
+## 🔁 Full Round Trip (Simplified Flow)
+
+```
+App: "GET /"
+↓
+[TCP: adds ports, sequence numbers]
+↓
+[IP: adds source & destination IPs]
+↓
+[Ethernet: adds MAC addresses]
+↓
+NIC sends → Switch → Router → Internet → Server
+↓
+Server replies (reverse path)
+↓
+Your browser renders page
+```
+
+### Flow inside your OS:
+| Layer                  | What Happens                    |
+| ---------------------- | ------------------------------- |
+| **Application (HTTP)** | `curl` builds HTTP request      |
+| **Transport (TCP)**    | Opens socket on port 80         |
+| **Internet (IP)**      | Routes to server IP             |
+| **Link (Ethernet)**    | Finds next-hop MAC using ARP    |
+| **Physical**           | NIC sends bits to switch/router |
+
+```
+[HTTP Data]
+   ↓
+[TCP Header + HTTP Data]
+   ↓
+[IP Header + TCP + HTTP]
+   ↓
+[Ethernet Header + IP + TCP + HTTP]
+   ↓
+--> NIC --> Cable/Wi-Fi --> Network
+```
+
+### ✅ Key Takeaways
+
+- Each layer adds a header to guide the packet.
+- Each layer only understands its own header.
+- When receiving, the system unwraps each layer in reverse.
+- OS implements this “stack” inside the kernel network subsystem.
+- Tools like tcpdump, wireshark, or /proc/net/ help visualize this stack in action.
+
+</details>
+
 
