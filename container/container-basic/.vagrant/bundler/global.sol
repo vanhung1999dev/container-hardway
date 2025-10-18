@@ -1,0 +1,1 @@
+{"dependencies":[["vagrant-vmware-desktop",["= 3.0.3"]],["ffi",["~> 1.0"]],["virtualbox",["= 0.8.6"]]],"checksum":"d5c3a2d9adb969b163f3bb8564148fc7b15b3b25896ded4714e89419eda925c2","vagrant_version":"2.3.7"}
