@@ -1828,3 +1828,243 @@ Client:
 socket() → connect() → read()/write() → close()
 ```
 </details>
+
+# Docker Network
+<summary>How to make containers think each of them has a dedicated network stack?</summary>
+<details>
+  # 🧩 How Containers Think They Have Their Own Network Stack
+
+When you run a container (e.g., Docker, Podman, Kubernetes pod), it *appears* to have its own independent network interface, routing table, and IP address.  
+In reality, this isolation is achieved using **Linux network namespaces (netns)** and **virtual Ethernet (veth) pairs**.
+
+Below, we’ll walk through how this illusion is created — step-by-step.
+
+---
+
+## 1️⃣ What Is a Network Namespace?
+
+A **network namespace** is a Linux kernel feature that allows a process (or group of processes) to have its **own isolated view of the network stack**.
+
+Each namespace can have:
+- Its own **network interfaces**
+- Its own **IP addresses**
+- Its own **routing table**
+- Its own **iptables/nftables**
+- Its own **/proc/net** entries
+
+So, processes inside different namespaces **cannot see or interfere** with each other’s network.
+
+> 🧠 In short: each network namespace is like a separate mini-networking world inside the same kernel.
+
+---
+
+## 2️⃣ Step 1 — Create a New Network Namespace
+
+```bash
+ip netns add netns1
+```
+👉 This creates a new namespace called netns1.
+
+At this point, netns1 has:
+
+- No interfaces (except a default loopback lo, which is down).
+- No routes.
+- No access to the host network.
+
+### 3️⃣ Step 2 — Create a Virtual Ethernet (veth) Pair
+```
+ip link add veth1 type veth peer name ceth1
+```
+
+This creates two connected virtual interfaces:
+| Interface | Lives in                  | Purpose                                        |
+| --------- | ------------------------- | ---------------------------------------------- |
+| `veth1`   | Root namespace (host)     | Acts like a “cable end” on the host            |
+| `ceth1`   | To be moved into `netns1` | Acts like the “other end” inside the container |
+
+💡 Think of a veth pair as a virtual wire connecting two network stacks.
+
+### 4️⃣ Step 3 — Move One End into the New Namespace
+```
+ip link set ceth1 netns netns1
+```
+
+Now:
+
+- veth1 stays in the root namespace.
+- ceth1 moves into netns1.
+
+They remain connected, just like two ends of an Ethernet cable.
+
+### 5️⃣ Step 4 — Assign IP Addresses and Bring Interfaces Up
+#### 🔹 On the host (root namespace)
+
+```
+ip addr add 172.16.16.201/24 dev veth1
+ip link set veth1 up
+```
+This makes veth1 active on the host with IP 172.16.16.201.
+#### 🔹 Inside the new namespace (netns1)
+
+```
+ip netns exec netns1 ip addr add 172.16.16.101/24 dev ceth1
+ip netns exec netns1 ip link set ceth1 up
+ip netns exec netns1 ip link set lo up
+```
+
+
+### 6️⃣ Step 5 — Test the Connectivity
+You can now test communication between the two ends.
+```
+ping 172.16.16.201 -c 2
+```
+
+If run from inside netns1:
+```
+ip netns exec netns1 ping 172.16.16.201
+```
+
+✅ You’ll see a successful ping — because ceth1 ↔ veth1 are directly connected.
+
+```
+     +---------------------+        +--------------------------+
+     |  Root Namespace     |        |   netns1 (Container)     |
+     |---------------------|        |--------------------------|
+     |  veth1              | <----> |  ceth1                   |
+     |  IP: 172.16.16.201  |        |  IP: 172.16.16.101       |
+     +---------------------+        +--------------------------+
+
+```
+</details>
+
+
+<summary>How container communicate with each others & with host</summary>
+<details>
+   
+### 1️⃣ Step 1: Creating Namespaces
+```
+ip netns add netns1
+ip netns add netns2
+```
+Each netns = a virtual container with its own:
+
+- Network interfaces (lo, etc.)
+- Routing table
+- ARP table
+- iptables rules
+
+They’re completely isolated from each other and from the host’s default namespace.
+
+📦 Think of each as a container without Docker — only networking isolation.
+
+### 2️⃣ Step 2: Virtual Ethernet Pair (veth)
+```
+ip link add veth1 type veth peer name ceth1
+ip link add veth2 type veth peer name ceth2
+```
+
+```
+[Host:veth1] <====> [netns1:ceth1]
+[Host:veth2] <====> [netns2:ceth2]
+```
+
+You later “plug” one end into a namespace:
+```
+ip link set ceth1 netns netns1
+ip link set ceth2 netns netns2
+```
+
+Now, ceth1 lives inside netns1, and ceth2 lives inside netns2.
+
+### 3️⃣ Step 3: Assign IPs
+#### On Host
+````
+ip addr add 172.16.16.201/24 dev veth1
+ip addr add 172.16.17.201/24 dev veth2
+ip link set veth1 up
+ip link set veth2 up
+````
+
+#### Inside Containers
+```
+ip netns exec netns1 ip addr add 172.16.16.101/24 dev ceth1
+ip netns exec netns2 ip addr add 172.16.17.101/24 dev ceth2
+```
+
+✅ Each pair now forms a mini subnet:
+```
+netns1 <-> host (172.16.16.0/24)
+netns2 <-> host (172.16.17.0/24)
+```
+
+### 4️⃣ Step 4: Default Route + Gateway
+Each namespace needs a way to reach outside its subnet (via host):
+
+```
+ip netns exec netns1 ip route add default via 172.16.16.201 dev ceth1
+ip netns exec netns2 ip route add default via 172.16.17.201 dev ceth2
+```
+
+Meaning:
+- "To reach any IP not in 172.16.16.0/24, send to 172.16.16.201 (the host side)."
+
+### 5️⃣ Step 5: Enable Host Routing + NAT
+To forward traffic between these namespaces or to the Internet, the host must act as a router.
+#### (a) Enable IP forwarding
+```
+sysctl -w net.ipv4.ip_forward=1
+```
+
+#### (b) Add NAT rules
+```
+gw_dev=$(ip -j route show | jq -r '.[]|select(.dst == "default") | .dev')
+iptables -t nat -A POSTROUTING -s 172.16.16.0/24 -o ${gw_dev} -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 172.16.17.0/24 -o ${gw_dev} -j MASQUERADE
+```
+- This masquerades packets leaving the host to the Internet so replies return correctly.
+- Without NAT, Internet servers would see source IPs like 172.16.16.101, which are private and unroutable.
+
+### 6️⃣ Step 6: Verification
+#### ✅ netns1 ↔ host
+```
+ip netns exec netns1 ping 172.16.16.201
+```
+
+#### ✅ netns2 ↔ host
+```
+ip netns exec netns2 ping 172.16.17.201
+```
+
+#### ✅ netns1 ↔ netns2
+- For this, you need the host to route between subnets 172.16.16.0/24 and 172.16.17.0/24.
+- The host already has both interfaces up, so routing works automatically as long as IP forwarding is enabled.
+
+### ✅ netns ↔ Internet
+```
+ip netns exec netns1 ping 1.1.1.1
+ip netns exec netns2 ping 1.1.1.1
+```
+
+### 🌐 Visualization
+```
+            ┌──────────────────────────────┐
+            │           Host               │
+            │                              │
+ Internet ⇄ eth0                           │
+            │                              │
+            │  172.16.16.201 ─ veth1 ─┐
+            │                         │
+            │  172.16.17.201 ─ veth2 ─┐
+            └──────────┬──────────────┘
+                       │
+          ┌────────────┴────────────┐
+          │                         │
+   netns1:ceth1               netns2:ceth2
+   172.16.16.101              172.16.17.101
+```
+</details>
+
+<summary>How to reach the outside world (e.g. the Internet) from inside the container?</summary>
+<details>
+ 
+</details>
