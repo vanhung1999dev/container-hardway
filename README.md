@@ -2068,3 +2068,42 @@ ip netns exec netns2 ping 1.1.1.1
 <details>
  
 </details>
+
+## Union File System
+<summary>What is it</summary>
+<details>
+ <img width="1219" height="596" alt="Screenshot 2025-11-11 at 21 45 05" src="https://github.com/user-attachments/assets/a3585973-5492-4a94-a7cc-1412b7c46d11" />
+   
+When Docker runs a container, the container’s filesystem is constructed from multiple layers: <br>
+- Base Image layers (read-only) → coming from image
+- Container layer (read-write) → created when container starts
+
+A union mount (also called a union filesystem) is a technique to merge multiple directories (layers) into a single unified view. <br>
+After merge:
+```
+/ (root)
+  |-- bin/
+  |-- etc/
+  |-- usr/
+  |-- (files from all layers combined)
+```
+
+### Why Do We Need Union Mount in Docker?
+| Problem Without UnionFS                                                    | Solution With UnionFS                              |
+| -------------------------------------------------------------------------- | -------------------------------------------------- |
+| Every container would need a full copy of the OS filesystem → large & slow | Layers are shared → smaller images, faster startup |
+| If each container modifies files, it overwrites core OS layers             | Container writes go only to **top writable layer** |
+| Image updates would require full rebuilds                                  | Layers can be reused, cached, shared               |
+
+Key Feature: Copy-on-Write <br>
+```
+Before Write:
+  read file from RO layer
+
+Write request →
+  copy file to RW layer
+  modify in RW layer
+```
+<img width="1199" height="604" alt="Screenshot 2025-11-11 at 21 50 05" src="https://github.com/user-attachments/assets/d6faf730-2799-486f-bd46-ee09b3c6ef05" />
+
+</details>
