@@ -2110,5 +2110,12 @@ Write request →
 
 ## Container Register
 <details>
-   
+   <img width="1204" height="675" alt="image" src="https://github.com/user-attachments/assets/cc23fa22-7658-4c7c-85c0-57339801696f" />
+
+   <img width="1199" height="674" alt="image" src="https://github.com/user-attachments/assets/de951581-f663-47be-a9c6-293d71bcdc0b" />
+
+   <img width="1197" height="672" alt="image" src="https://github.com/user-attachments/assets/aa53775c-dd77-4673-9a2d-1f2bd093497e" />
+
+   <img width="1197" height="670" alt="image" src="https://github.com/user-attachments/assets/1907b05b-a785-4c08-94d4-ea1321f5419f" />
+
 </details>
