@@ -3178,3 +3178,405 @@ Final image is tiny, containing only the Go binary and minimal OS libraries.
 **Result:**  
 Multi-stage builds produce smaller, secure, and production-ready Docker images while keeping the build process flexible and cache-friendly. 🚀
 </details>
+
+
+# Secert
+<summary>Secrets as build argument</summary>
+<details>
+   # 🕵️ Understanding Secret Traces in Docker Builds
+
+When you pass **secrets to Docker builds**, it’s crucial to understand **how Docker layers work** and why sensitive data can accidentally be persisted.
+
+---
+
+## 1️⃣ How Docker Image Layers Work
+
+Each instruction in a Dockerfile (`RUN`, `COPY`, `ADD`) creates a **new image layer**.  
+A layer contains the **changes made by that instruction**, including:
+
+- Files added or modified
+- Environment variables written
+- Command outputs (if redirected to a file)
+
+Docker layers are **immutable** — once created, they remain in the image history.
+
+### Example:
+
+```dockerfile
+FROM alpine:3.20
+ARG API_KEY
+RUN echo "My API key is $API_KEY" > /secret.txt
+```
+
+- `RUN echo "My API key..."` creates a layer containing the file `/secret.txt`.
+- Anyone inspecting the image (`docker history`, `docker inspect`) could see the **layer command** and the **content if you check the filesystem**.
+- Even if you delete `/secret.txt` in a later layer, the previous layer still contains it.  
+
+**Result:** ARG values are not secure — traces exist in image history.
+
+---
+
+## 2️⃣ Where Secret Traces Can Exist
+
+| Secret Source | Where Trace Might Exist | Why |
+|---------------|-----------------------|-----|
+| **ARG** | Layer history (`docker history`) | ARG value is expanded in RUN commands and recorded in the layer snapshot |
+| **Environment Variables (`ENV`)** | Image config (`docker inspect`) | ENV is persisted in image metadata and visible to anyone pulling the image |
+| **COPY / ADD secret files** | Layer filesystem | Secret files are baked into the image permanently |
+| **RUN output containing secrets** | Layer snapshot | Any files or outputs created in the layer include secrets |
+
+### Tools to see traces
+
+- `docker history <image>` — shows the command for each layer
+- `docker inspect <image>` — shows environment variables and metadata
+- `docker save <image>` — shows file contents in layers
+
+---
+
+## 3️⃣ Why BuildKit Secrets Are Safer
+
+Docker BuildKit introduces **`--mount=type=secret`**, which avoids traces by:
+
+- Mounting the secret as a **temporary file** only during a single `RUN` instruction.
+- Not storing it in any layer — the file disappears after the command finishes.
+- Not showing it in `docker history` or `docker inspect`.
+
+### Example:
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM alpine:3.20
+RUN --mount=type=secret,id=my_secret \
+    cat /run/secrets/my_secret
+```
+
+- `/run/secrets/my_secret` exists **only during this RUN step**.
+- Once the RUN completes, the secret is **gone**.
+- No layer contains the secret file.
+
+---
+
+## 4️⃣ Common Mistakes That Cause Traces
+
+1. **Using ARG for sensitive values**
+   ```dockerfile
+   ARG SECRET
+   RUN echo $SECRET > /tmp/secret.txt
+   ```
+   - Secret now exists in this layer.
+2. **Setting ENV for secrets**
+   ```dockerfile
+   ENV API_KEY=supersecret
+   ```
+   - Visible via `docker inspect`.
+3. **Copying secret files**
+   ```dockerfile
+   COPY .env /app/.env
+   ```
+   - File baked into the image permanently.
+4. **Logging secrets in build output**
+   ```dockerfile
+   RUN echo "API_KEY=$API_KEY"
+   ```
+   - Output may appear in CI/CD logs.
+
+---
+
+## 5️⃣ Best Practices to Avoid Traces
+
+| Practice | Description |
+|----------|-------------|
+| Use BuildKit `--mount=type=secret` | Ephemeral secrets that never enter layers |
+| Avoid ARG for sensitive info | ARG is visible in layers and history |
+| Do not set secrets in ENV | ENV values are stored in image metadata |
+| Don’t COPY secret files | Secrets remain in final image if copied |
+| Use `.dockerignore` | Prevent secret files from being sent in build context |
+| Limit RUN steps using secrets | Only mount secrets where necessary to minimize exposure |
+
+---
+
+## 6️⃣ Summary
+
+- **Why traces exist:** Docker layers are snapshots of filesystem and metadata; anything written in a layer or declared as ENV/ARG can persist.  
+- **Where traces exist:** Layer filesystem, history, image config, or logs.  
+- **Safe approach:** BuildKit `--mount=type=secret` keeps secrets **temporary and ephemeral**, with no traces in final images.  
+
+✅ **Key takeaway:** Secrets handled incorrectly (ARG, ENV, COPY) can leave traces in image layers, history, or metadata. BuildKit secrets are the only truly secure way to avoid leaving sensitive data behind.
+
+---
+
+</details>
+
+<summary>Using secret mount RUN option</summary>
+<details>
+   # 🔒 Using Docker BuildKit Secret Mounts with RUN
+
+Docker BuildKit allows you to use **ephemeral secrets** during a build without leaving traces in image layers.  
+The `--mount=type=secret` option on a `RUN` instruction is the recommended way to securely pass sensitive data (API keys, tokens, passwords) during builds.
+
+---
+
+## 1️⃣ Enable BuildKit
+
+BuildKit is required for secret mounts. Enable it:
+
+```bash
+export DOCKER_BUILDKIT=1
+```
+
+Or inline:
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t myapp .
+```
+
+Also, ensure your Dockerfile declares BuildKit syntax:
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+```
+
+---
+
+## 2️⃣ Basic Syntax
+
+```dockerfile
+RUN --mount=type=secret,id=<secret_id> <command>
+```
+
+- `type=secret` → mounts a secret temporarily during this RUN step  
+- `id=<secret_id>` → identifier for the secret (must match `--secret` during build)  
+- Secret is mounted at `/run/secrets/<secret_id>` by default  
+
+---
+
+## 3️⃣ Example: Using Secret for API Key
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM alpine:3.20
+WORKDIR /app
+
+# Copy application code
+COPY . .
+
+# Use secret for build
+RUN --mount=type=secret,id=api_key \
+    API_KEY=$(cat /run/secrets/api_key) && \
+    echo "Using API key length: ${#API_KEY}" > key_info.txt
+
+CMD ["cat", "key_info.txt"]
+```
+
+### Build Command:
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+    --secret id=api_key,src=./my_api_key.txt \
+    -t secret-run-demo .
+```
+
+✅ Notes:
+- Secret file `my_api_key.txt` is **not stored in any layer**.  
+- Secret is available **only during the RUN instruction**.  
+- `docker history` and `docker inspect` **do not reveal the secret**.
+
+---
+
+## 4️⃣ Example: Installing Private Python Packages
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+
+RUN --mount=type=secret,id=pypi_token \
+    pip install --no-cache-dir \
+    --extra-index-url https://__token__:$(cat /run/secrets/pypi_token)@pypi.org/simple \
+    -r requirements.txt
+```
+
+### Build Command:
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+    --secret id=pypi_token,src=./pypi_token.txt \
+    -t python-secret-demo .
+```
+
+**Benefit:** The PyPI token is **never persisted** in the image layers.
+
+---
+
+## 5️⃣ Multiple Secrets in a Single RUN
+
+```dockerfile
+RUN --mount=type=secret,id=secret1 \
+    --mount=type=secret,id=secret2 \
+    bash -c 'echo "Secret1 length: $(cat /run/secrets/secret1)"'
+```
+
+- Multiple secrets can be mounted simultaneously.  
+- Each secret is isolated in `/run/secrets/<id>`.
+
+---
+
+## 6️⃣ Best Practices
+
+| Practice | Why |
+|----------|-----|
+| Use `--mount=type=secret` instead of ARG/ENV | Prevents secret persistence in layers |
+| Keep secret usage confined to a single RUN | Reduces exposure risk |
+| Don’t copy secret files with `COPY` | Prevents permanent inclusion in final image |
+| Use `.dockerignore` | Prevents sending secret files to build context |
+| Prefer ephemeral secrets | Avoid long-lived sensitive files in container |
+
+---
+
+## 7️⃣ Summary
+
+- `--mount=type=secret` is **ephemeral**: secret exists only during a RUN step.  
+- Secret is **never stored in image layers**, making it secure for sensitive data.  
+- BuildKit must be enabled (`DOCKER_BUILDKIT=1`) and Dockerfile syntax set (`# syntax=docker/dockerfile:1.4`).  
+- Combine with caching and multi-stage builds for fast, secure, production-ready images.
+
+✅ **Key takeaway:** Secret mounts with RUN allow **safe build-time secrets** without leaving traces in Docker images.
+
+</details>
+
+<summary>using ssh mount RUN option</summary>
+<details>
+   # 🔑 Using Docker BuildKit SSH Mounts with RUN
+
+Docker BuildKit allows you to **mount SSH keys temporarily** during a build using the `--mount=type=ssh` option in a `RUN` instruction.  
+This is commonly used for accessing private Git repositories or other SSH-based services securely.
+
+---
+
+## 1️⃣ Enable BuildKit
+
+BuildKit must be enabled:
+
+```bash
+export DOCKER_BUILDKIT=1
+```
+
+Or inline:
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t myapp .
+```
+
+Dockerfile must declare BuildKit syntax:
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+```
+
+---
+
+## 2️⃣ Basic Syntax
+
+```dockerfile
+RUN --mount=type=ssh,id=<ssh_id> <command>
+```
+
+- `type=ssh` → mounts SSH agent keys for the duration of the RUN step  
+- `id=<ssh_id>` → identifier for the SSH key (matches `--ssh` during build)  
+- Default mount location: `/run/ssh/<id>`  
+- Mount is **ephemeral** and **not persisted** in the image layers
+
+---
+
+## 3️⃣ Example: Cloning a Private Git Repository
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM alpine:3.20
+RUN apk add --no-cache git openssh
+
+WORKDIR /app
+
+# Clone private repository using SSH
+RUN --mount=type=ssh,id=git_key \
+    git clone git@github.com:username/private-repo.git .
+
+CMD ["ls", "-la"]
+```
+
+### Build Command:
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+    --ssh git_key=$HOME/.ssh/id_rsa \
+    -t ssh-mount-demo .
+```
+
+✅ Notes:
+- SSH key is available only during the RUN step.  
+- No SSH key is persisted in the image layers.  
+- `docker history` and `docker inspect` **do not reveal the key**.
+
+---
+
+## 4️⃣ Using Multiple SSH Keys
+
+```dockerfile
+RUN --mount=type=ssh,id=git_key1 \
+    --mount=type=ssh,id=git_key2 \
+    bash -c 'git clone git@github.com:user/repo1.git && git clone git@github.com:user/repo2.git'
+```
+
+- Each key is mounted in `/run/ssh/<id>` for that RUN step.  
+- Keys are ephemeral and isolated.
+
+---
+
+## 5️⃣ Example: Installing Private NPM Packages via SSH
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM node:20-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+
+# Install private packages via SSH
+RUN --mount=type=ssh,id=npm_ssh \
+    npm ci
+```
+
+Build command:
+
+```bash
+DOCKER_BUILDKIT=1 docker build \
+    --ssh npm_ssh=$HOME/.ssh/id_rsa \
+    -t node-ssh-demo .
+```
+
+**Benefit:** Your private SSH key is **never included in the image**.
+
+---
+
+## 6️⃣ Best Practices
+
+| Practice | Why |
+|----------|-----|
+| Use `--mount=type=ssh` instead of copying SSH keys | Prevents persistent exposure in layers |
+| Keep SSH usage limited to a single RUN | Reduces attack surface |
+| Use `.dockerignore` to exclude SSH keys | Avoid accidental inclusion in build context |
+| Use ssh-agent forwarding | Avoid storing private keys on disk |
+| Combine with multi-stage builds | Keep final image clean, only include artifacts |
+
+---
+
+## 7️⃣ Summary
+
+- `--mount=type=ssh` is ephemeral: SSH keys exist **only during RUN**.  
+- Useful for **private Git repos or private package installs**.  
+- Keys are **never stored in image layers**, protecting sensitive credentials.  
+- BuildKit (`DOCKER_BUILDKIT=1`) and Dockerfile syntax (`# syntax=docker/dockerfile:1.4`) are required.  
+
+✅ **Key takeaway:** SSH mounts allow secure access to private resources during build without risking credentials in the final Docker image.
+
+</details>
