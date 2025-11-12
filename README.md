@@ -2069,7 +2069,7 @@ ip netns exec netns2 ping 1.1.1.1
  
 </details>
 
-## Union File System
+# Union File System
 <summary>What is it</summary>
 <details>
  <img width="1219" height="596" alt="Screenshot 2025-11-11 at 21 45 05" src="https://github.com/user-attachments/assets/a3585973-5492-4a94-a7cc-1412b7c46d11" />
@@ -2108,7 +2108,7 @@ Write request →
 
 </details>
 
-## Container Register
+# Container Register
 <details>
    <img width="1204" height="675" alt="image" src="https://github.com/user-attachments/assets/cc23fa22-7658-4c7c-85c0-57339801696f" />
 
@@ -2118,4 +2118,1063 @@ Write request →
 
    <img width="1197" height="670" alt="image" src="https://github.com/user-attachments/assets/1907b05b-a785-4c08-94d4-ea1321f5419f" />
 
+</details>
+
+
+# Best Pratice
+<summary>Docker Ignore</summary>
+<details>
+   # 🐳 Docker Image Optimization and `.dockerignore` Guide
+
+Optimizing Docker images and using `.dockerignore` correctly are key to building smaller, faster images.
+
+---
+
+## 🧩 1. What `.dockerignore` Does
+
+The **`.dockerignore`** file works like a `.gitignore`, but for Docker builds.  
+It tells Docker **which files and directories to exclude** from the **build context** when you run:
+
+```bash
+docker build -t myapp .
+```
+
+Without `.dockerignore`, Docker sends the entire directory (the *build context*) to the daemon, which can:
+- Slow down builds  
+- Increase image size  
+- Waste bandwidth (especially in remote builds)
+
+---
+
+## 🧱 2. Build Context
+
+The **build context** is everything in the directory you specify during `docker build`.  
+Example:
+
+```bash
+docker build -t myapp .
+```
+
+Docker sends all files from `.` (current directory) to the daemon.  
+`.dockerignore` prevents unnecessary files from being sent.
+
+---
+
+## 📝 3. Example `.dockerignore`
+
+```dockerignore
+# Ignore Git stuff
+.git
+.gitignore
+
+# Ignore dependencies
+node_modules
+venv
+
+# Ignore logs and temp files
+*.log
+tmp/
+__pycache__/
+
+# Ignore Dockerfile artifacts
+Dockerfile*
+.dockerignore
+```
+
+When Docker sees this file in the build context root, it:
+1. Reads `.dockerignore` before sending files.  
+2. Excludes all matching files/folders.  
+3. Makes them unavailable to `COPY` or `ADD` commands.
+
+---
+
+## ⚙️ 4. Example Project Structure
+
+```
+app/
+├── .dockerignore
+├── Dockerfile
+├── app.py
+├── data/
+│   └── bigfile.csv
+├── venv/
+└── requirements.txt
+```
+
+`.dockerignore`:
+
+```dockerignore
+venv
+data
+```
+
+`Dockerfile`:
+
+```Dockerfile
+FROM python:3.12-slim
+WORKDIR /app
+COPY . .
+RUN pip install -r requirements.txt
+CMD ["python", "app.py"]
+```
+
+➡️ Only `app.py`, `requirements.txt`, and `.dockerignore` are sent to the daemon.  
+`data/` and `venv/` are excluded from the build context.
+
+---
+
+## 🚀 5. Why `.dockerignore` Matters for Optimization
+
+Using `.dockerignore` helps you:
+
+- **Reduce build context size** → faster builds  
+- **Shrink image layers** → fewer unnecessary files  
+- **Improve caching** → fewer cache invalidations when irrelevant files change  
+
+---
+
+## ✅ 6. Best Practices
+
+- Always ignore large or irrelevant directories (`.git`, `node_modules`, `venv`, test data, etc.).  
+- Keep `.dockerignore` similar to `.gitignore`, but not identical — Docker usually needs fewer files.  
+- Combine `.dockerignore` with **multi-stage builds** for maximum optimization.
+
+---
+
+## 🧠 Summary
+
+| Aspect | Benefit |
+|--------|----------|
+| `.dockerignore` | Excludes unnecessary files from build context |
+| Smaller Context | Faster builds and reduced bandwidth |
+| Fewer Layers | Smaller image size |
+| Better Caching | Faster rebuilds when source files change |
+
+---
+
+**Example Command:**
+
+```bash
+docker build -t optimized-app .
+```
+
+**Result:**  
+A smaller, cleaner, and faster Docker image 🚀
+
+</details>
+
+<summary>Using Docker linting tools</summary>
+<details>
+   # 🧹 Dockerfile Linting Tools — Best Practices and Usage Guide
+
+Linting your Dockerfiles helps you **catch errors early**, **enforce best practices**, and **optimize image builds** for security, size, and maintainability.
+
+This guide covers popular Dockerfile linting tools and how to use them effectively.
+
+---
+
+## 🧩 1. What is Dockerfile Linting?
+
+**Dockerfile linting** means analyzing your Dockerfile for:
+- Syntax errors or deprecated instructions  
+- Inefficient layering and unnecessary commands  
+- Security or permission risks  
+- Non-reproducible builds (e.g., `latest` tags)
+
+Example issues a linter can detect:
+- `apt-get update` without `apt-get install` in the same layer  
+- Missing `HEALTHCHECK`  
+- Using `ADD` instead of `COPY` unnecessarily  
+- Running as root user when not required  
+
+---
+
+## 🧰 2. Popular Dockerfile Linting Tools
+
+| Tool | Description | Language/Platform | Example Command |
+|------|--------------|-------------------|-----------------|
+| **Hadolint** | Most popular Dockerfile linter with ShellCheck integration | Haskell | `hadolint Dockerfile` |
+| **Dockle** | Security-focused linter checking for best practices and vulnerabilities | Go | `dockle myimage:latest` |
+| **Docker Scout** | Official Docker tool for image analysis and security scanning | Docker CLI | `docker scout cves myimage` |
+| **Trivy** | General-purpose vulnerability scanner that includes Docker image scanning | Go | `trivy image myimage` |
+
+---
+
+## 🧪 3. Using **Hadolint**
+
+### 📦 Install
+
+**macOS (Homebrew):**
+```bash
+brew install hadolint
+```
+
+**Linux (download binary):**
+```bash
+wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+chmod +x /usr/local/bin/hadolint
+```
+
+**Docker:**
+```bash
+docker run --rm -i hadolint/hadolint < Dockerfile
+```
+
+### ▶️ Example Usage
+
+```bash
+hadolint Dockerfile
+```
+
+### 🧾 Example Output
+
+```
+Dockerfile:3 DL3008 Use alpine instead of ubuntu
+Dockerfile:5 DL3009 Delete apt-get lists after installing
+Dockerfile:9 DL3059 Multiple consecutive RUN instructions
+```
+
+Hadolint provides rule codes (like `DL3008`) you can look up in [Hadolint’s rule documentation](https://github.com/hadolint/hadolint/wiki).
+
+---
+
+## 🧠 4. Using **Dockle** for Security and Best Practices
+
+**Dockle** checks for:
+- Missing `HEALTHCHECK`
+- Using `root` user
+- Sensitive files left in image
+- Improper permissions or unnecessary packages
+
+### 📦 Install
+```bash
+brew install goodwithtech/tap/dockle
+```
+
+### ▶️ Usage
+
+Run directly on a built image:
+```bash
+dockle myimage:latest
+```
+
+### 🧾 Example Output
+
+```
+[WARN] CIS-DI-0001: Create a user for the container
+[INFO] CIS-DI-0005: Enable Content trust for Docker
+[WARN] DKL-DI-0002: HEALTHCHECK instruction missing
+```
+
+---
+
+## 🔍 5. Integrating Linters into CI/CD
+
+You can run linting automatically in CI pipelines (GitHub Actions, GitLab CI, Jenkins, etc.):
+
+**Example: GitHub Actions Workflow**
+
+```yaml
+name: Docker Lint
+on: [push, pull_request]
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+```
+
+This ensures all PRs follow your Dockerfile best practices.
+
+---
+
+## ⚙️ 6. Combining Linting + `.dockerignore`
+
+You can pair linters with `.dockerignore` to improve results:
+
+- Linters flag redundant or large COPY layers — `.dockerignore` keeps them out.
+- Security linters (Dockle, Trivy) check for sensitive files — `.dockerignore` prevents them from being added.
+
+Example combined setup:
+```bash
+hadolint Dockerfile && dockle myimage:latest
+```
+
+---
+
+## 🧠 7. Summary
+
+| Tool | Focus Area | Example Command |
+|------|-------------|----------------|
+| **Hadolint** | Syntax & best practices | `hadolint Dockerfile` |
+| **Dockle** | Security checks | `dockle myimage:latest` |
+| **Trivy** | Vulnerability scanning | `trivy image myimage` |
+| **Docker Scout** | Official Docker security insights | `docker scout cves myimage` |
+
+---
+
+## ✅ 8. Key Takeaways
+
+- **Always lint Dockerfiles** before building — catches issues early.  
+- **Integrate linting into CI/CD** for consistency.  
+- **Combine tools** (Hadolint + Dockle/Trivy) for best coverage.  
+- Keep Dockerfiles **minimal, reproducible, and secure**.
+
+---
+
+**Example full check command:**
+
+```bash
+hadolint Dockerfile && dockle myapp:latest && trivy image myapp:latest
+```
+
+**Result:**  
+Your Dockerfiles stay clean, efficient, and secure 🚀
+
+---
+
+</details>
+
+<summary> Using COPY/ADD option to change file metadata </summary> 
+<details>
+  # 📦 Using COPY/ADD to Change File Metadata in Docker
+
+In Docker, both **`COPY`** and **`ADD`** instructions are used to copy files and directories from the build context into the image.  
+Beyond just copying data, these commands can also modify **file metadata**, such as **ownership** and **permissions**.
+
+---
+
+## 🧩 1. Difference Between `COPY` and `ADD`
+
+| Instruction | Purpose | Notes |
+|--------------|----------|-------|
+| `COPY` | Copies files/directories from the build context into the image | Simple, recommended for most use cases |
+| `ADD` | Like `COPY`, but can also extract compressed archives and fetch files from URLs | Use only when you need these extra features |
+
+✅ **Best Practice:** Prefer `COPY` unless you explicitly need `ADD`’s extra functionality.
+
+---
+
+## ⚙️ 2. Changing File Ownership (`--chown`)
+
+You can use the `--chown` flag with both `COPY` and `ADD` to change the **user and group ownership** of files inside the image.
+
+### 🧾 Syntax
+
+```dockerfile
+COPY --chown=<user>:<group> <source> <destination>
+```
+
+### 🧱 Example
+
+```dockerfile
+FROM ubuntu:22.04
+WORKDIR /app
+
+# Copy files and set owner to 'appuser'
+COPY --chown=appuser:appgroup src/ /app/
+
+# Verify permissions
+RUN ls -l /app
+```
+
+### 📍 Details
+- `appuser` and `appgroup` must exist in the image before this command.
+- You can also use numeric IDs:
+  ```dockerfile
+  COPY --chown=1001:1001 . /data
+  ```
+
+---
+
+## 🔐 3. Changing File Permissions
+
+Docker doesn’t provide a direct flag in `COPY`/`ADD` to modify **permissions**,  
+but you can use a subsequent `RUN chmod` command.
+
+### Example
+
+```dockerfile
+FROM alpine:3.19
+WORKDIR /scripts
+
+# Copy script into image
+COPY script.sh .
+
+# Change permissions to make it executable
+RUN chmod +x script.sh
+
+CMD ["./script.sh"]
+```
+
+### Why Use `RUN chmod`
+- It ensures the correct executable permissions.
+- Works even when source file permissions differ.
+- Allows fine-grained control (e.g., `chmod 640` for sensitive configs).
+
+---
+
+## 🧰 4. Combining Ownership and Permissions
+
+Example: Copy files owned by `www-data` and set execution permissions.
+
+```dockerfile
+FROM debian:bookworm
+RUN useradd -m www-data
+WORKDIR /var/www/html
+
+# Copy and assign ownership
+COPY --chown=www-data:www-data ./site/ .
+
+# Adjust permissions
+RUN chmod -R 755 /var/www/html
+
+USER www-data
+CMD ["python3", "-m", "http.server", "8080"]
+```
+
+---
+
+## 🧪 5. Using `ADD` to Extract Archives and Set Metadata
+
+`ADD` can automatically extract `.tar` or `.tar.gz` archives while preserving metadata:
+
+```dockerfile
+FROM ubuntu:22.04
+WORKDIR /data
+
+# Extract archive and set owner
+ADD --chown=appuser:appgroup data.tar.gz /data/
+```
+
+- The archive will be **extracted** automatically.
+- Ownership will be set to `appuser:appgroup`.
+- This is useful for prebuilt artifacts or backups.
+
+⚠️ **Caution:** Avoid using `ADD` to download URLs (e.g., `ADD https://...`) —  
+it’s better to use `curl` or `wget` for predictable and cacheable builds.
+
+---
+
+## 🧠 6. Common Mistakes to Avoid
+
+❌ Forgetting `--chown` → files owned by `root`  
+❌ Relying on host permissions → may differ per system  
+❌ Using `ADD` unnecessarily → less cacheable, more complex  
+❌ Missing `chmod` → scripts fail due to lack of execute permission  
+
+✅ Always combine `COPY --chown` and `RUN chmod` when you need full control.
+
+---
+
+## 🧩 7. Example: Secure Application Deployment
+
+```dockerfile
+FROM python:3.12-slim
+
+# Create a non-root user
+RUN useradd -m appuser
+WORKDIR /app
+
+# Copy app source and assign ownership
+COPY --chown=appuser:appuser . .
+
+# Adjust file permissions
+RUN chmod 640 config.yaml && chmod +x run.sh
+
+USER appuser
+CMD ["./run.sh"]
+```
+
+**Result:**
+- App runs as non-root.
+- Config file has restricted read permissions.
+- Startup script is executable by the app user.
+
+---
+
+## ✅ 8. Summary
+
+| Task | Method | Example |
+|------|---------|----------|
+| Set file owner | `--chown=user:group` | `COPY --chown=appuser:appgroup src/ /app/` |
+| Set file permissions | `RUN chmod ...` | `RUN chmod +x script.sh` |
+| Extract archive & set metadata | `ADD --chown=user:group archive.tar.gz /dest/` | `ADD --chown=app:app data.tar.gz /data/` |
+
+---
+
+**Best Practice:**  
+Use `COPY --chown` for ownership and `RUN chmod` for permissions to create secure, portable, and reproducible images. 🚀
+
+---
+ 
+</details>
+
+<summary> Write Cache Friendly Dockerfile </summary>
+<details>
+   # ⚡ Writing a Cache-Friendly Dockerfile
+
+Efficient Docker builds rely heavily on Docker’s **layer caching** mechanism.  
+A well-structured, cache-friendly Dockerfile leads to **faster builds**, **smaller rebuild times**, and **better CI/CD performance**.
+
+---
+
+## 🧩 1. How Docker Layer Caching Works
+
+Every instruction in a Dockerfile (e.g., `FROM`, `COPY`, `RUN`, `CMD`) creates a **new image layer**.
+
+When you rebuild an image:
+- Docker **reuses cached layers** if nothing has changed in the instructions or their inputs.
+- If one layer changes, **all layers after it** are rebuilt.
+
+### Example
+```dockerfile
+FROM node:20
+WORKDIR /app
+
+COPY package.json .
+RUN npm install
+
+COPY . .
+CMD ["npm", "start"]
+```
+
+If you modify just one `.js` file, Docker must redo the last `COPY . .` and rebuild everything after it — but it can reuse the `npm install` layer if `package.json` hasn’t changed.
+
+---
+
+## 🚀 2. Principles of Cache-Friendly Dockerfiles
+
+| Principle | Why It Matters |
+|------------|----------------|
+| **1. Order instructions by stability** | Stable layers (dependencies) should come before volatile layers (source code). |
+| **2. Limit the build context** | Use `.dockerignore` to avoid sending unnecessary files. |
+| **3. Separate dependency installation** | Keep dependency installation independent from frequent changes. |
+| **4. Use specific versions** | Ensures consistent caching and reproducibility. |
+| **5. Avoid unnecessary `RUN` layers** | Combine commands to reduce layer count. |
+
+---
+
+## 🧱 3. Example: Cache-Friendly Node.js Dockerfile
+
+```dockerfile
+# Step 1: Use a lightweight base image
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+# Step 2: Copy dependency files first (changes less frequently)
+COPY package*.json ./
+
+# Step 3: Install dependencies (cached unless package.json changes)
+RUN npm ci --only=production
+
+# Step 4: Copy source code separately (changes more often)
+COPY . .
+
+# Step 5: Build or prepare your app
+RUN npm run build
+
+# Step 6: Use a small runtime image
+FROM node:20-alpine AS runtime
+
+WORKDIR /app
+COPY --from=build /app .
+
+# Use a non-root user for security
+USER node
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+### 🧠 Why It’s Cache Friendly
+- Dependency installation (`npm ci`) is cached until `package*.json` changes.  
+- Source code changes (`COPY . .`) don’t invalidate earlier layers.  
+- Multi-stage build reduces final image size.
+
+---
+
+## 🐍 4. Example: Cache-Friendly Python Dockerfile
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Copy only requirements first
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the source code
+COPY . .
+
+CMD ["python", "app.py"]
+```
+
+✅ Rebuilds are fast — `pip install` is only re-run when `requirements.txt` changes.  
+Other code changes only affect the last few layers.
+
+---
+
+## 🦴 5. Multi-Stage Build Example (Go)
+
+```dockerfile
+# Build stage
+FROM golang:1.23-alpine AS builder
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN go build -o /app/main .
+
+# Final stage
+FROM alpine:3.20
+WORKDIR /app
+COPY --from=builder /app/main .
+
+CMD ["./main"]
+```
+
+### Benefits:
+- Reuses Go module cache.
+- Keeps final image minimal.
+- Fast rebuilds when only code changes.
+
+---
+
+## 🧰 6. Use `.dockerignore` to Improve Caching
+
+Example `.dockerignore`:
+```
+.git
+node_modules
+venv
+__pycache__
+*.log
+tests/
+tmp/
+```
+
+This keeps unnecessary files out of the **build context**, ensuring:
+- Smaller context size
+- Faster cache lookup
+- More consistent layer reuse
+
+---
+
+## 🧠 7. Extra Tips
+
+- **Use `RUN apt-get update && apt-get install` in one line**  
+  Prevents cache busting and keeps layers clean:
+  ```dockerfile
+  RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+  ```
+
+- **Pin dependency versions** for reproducible caching.
+- **Avoid copying the whole directory early** — copy only what’s needed first.
+- **Use build arguments (`ARG`) wisely**; changing an ARG invalidates cache for later layers.
+
+---
+
+## ✅ 8. Summary
+
+| Tip | Description |
+|-----|--------------|
+| Copy dependency files first | Enables caching of installed dependencies |
+| Separate build and runtime | Reduces rebuild time and image size |
+| Use `.dockerignore` | Avoids context pollution |
+| Combine commands | Fewer layers, faster builds |
+| Pin versions | Predictable and reproducible builds |
+
+---
+
+**Example build command:**
+```bash
+docker build -t myapp:latest .
+```
+
+**Result:**  
+A fast, cache-efficient, and lightweight image that rebuilds in seconds 🚀
+
+---
+
+</details>
+
+<summary>Using BuildKit cache mount</summary>
+<details>
+   # ⚙️ Using Docker BuildKit Cache Mounts for Faster Builds
+
+Docker **BuildKit** introduces advanced caching features such as **cache mounts**, which allow you to persist and reuse intermediate build data (like package caches or compiled artifacts) across builds.
+
+This dramatically improves build performance — especially for dependency-heavy projects (Node.js, Python, Go, etc.).
+
+---
+
+## 🧩 1. What is BuildKit?
+
+**BuildKit** is Docker’s modern build engine that enhances performance, caching, and security.
+
+✅ Benefits:
+- Parallel builds  
+- Mount-based caching (`--mount=type=cache`)  
+- Inline secrets and SSH forwarding  
+- Better output control and progress display  
+
+Enable BuildKit globally or per command:
+
+```bash
+export DOCKER_BUILDKIT=1
+```
+
+Or inline:
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t myapp .
+```
+
+---
+
+## 💾 2. Understanding `--mount=type=cache`
+
+BuildKit cache mounts allow a `RUN` instruction to **reuse cached directories** between builds.  
+This is ideal for directories like:
+
+- `/root/.cache/pip` → for Python pip cache  
+- `/root/.npm` → for Node.js npm cache  
+- `/go/pkg/mod` → for Go modules  
+- `/var/cache/apt` → for apt packages
+
+### 🧱 Syntax
+
+```dockerfile
+RUN --mount=type=cache,target=<path> <command>
+```
+
+Optional parameters:
+- `id=<string>` — shared cache identifier across builds/images
+- `sharing=locked|shared|private` — defines cache sharing mode
+
+---
+
+## 🐍 3. Example: Python Build with PIP Cache
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+# Use BuildKit cache for pip
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["python", "app.py"]
+```
+
+### 🚀 Benefits
+- Speeds up subsequent builds by reusing pip cache.
+- No large layers with leftover cached files.
+- Each new build pulls dependencies from the cache mount instead of the internet.
+
+---
+
+## 🧰 4. Example: Node.js with NPM/Yarn Cache
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+
+# Use BuildKit cache for npm
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --only=production
+
+COPY . .
+
+CMD ["npm", "start"]
+```
+
+✅ On rebuilds, `npm ci` pulls dependencies from `/root/.npm` cache, saving time and bandwidth.
+
+---
+
+## 🦴 5. Example: Go Modules Cache
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM golang:1.23-alpine
+
+WORKDIR /src
+
+# Use cache for Go modules
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go env -w GO111MODULE=on
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN go build -o /app/main .
+
+CMD ["/app/main"]
+```
+
+✅ Go module downloads and compilation are cached efficiently.
+
+---
+
+## 🧱 6. Example: apt-get Cache
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM ubuntu:24.04
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y \
+    curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+```
+
+✅ Cached apt metadata speeds up package installs between builds.
+
+---
+
+## 🔐 7. Sharing Caches Between Builds
+
+You can assign an explicit **cache ID** so multiple Dockerfiles or build stages share the same cache:
+
+```dockerfile
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
+```
+
+Then, even if you rebuild another image that uses the same `id`, it reuses the same pip cache.
+
+---
+
+## 🧠 8. Common Mistakes to Avoid
+
+| Mistake | Why It’s a Problem |
+|----------|-------------------|
+| Forgetting `# syntax=docker/dockerfile:1.4` | Required for `--mount` syntax |
+| Using `--no-cache` build flag | Disables all caching including mounts |
+| Omitting `target` path | Cache has nowhere to store data |
+| Caching large binary outputs | Caches should only store dependency artifacts, not build products |
+
+---
+
+## ⚙️ 9. Combine with Multi-Stage Builds
+
+You can combine cache mounts and multi-stage builds for optimal results:
+
+```dockerfile
+# syntax=docker/dockerfile:1.4
+FROM golang:1.23 AS builder
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/go-build go build -o main .
+
+FROM alpine:3.20
+COPY --from=builder /app/main /usr/local/bin/main
+CMD ["main"]
+```
+
+✅ Keeps your final image small, but still benefits from caching builds and modules.
+
+---
+
+## 🧰 10. Build Command Examples
+
+**Build with BuildKit enabled:**
+```bash
+DOCKER_BUILDKIT=1 docker build -t cache-demo .
+```
+
+**Inspect cache usage:**
+```bash
+docker buildx build --progress=plain .
+```
+
+---
+
+## ✅ 11. Summary
+
+| Feature | Description | Example |
+|----------|--------------|----------|
+| `--mount=type=cache` | Enables persistent build cache | `RUN --mount=type=cache,target=/root/.cache/pip pip install -r reqs.txt` |
+| `target=` | Directory inside the container to cache | `/root/.cache/pip` |
+| `id=` | Reuse cache across builds | `id=pip-cache` |
+| `sharing=` | Controls cache access mode | `shared`, `private`, or `locked` |
+| `# syntax=docker/dockerfile:1.4` | Required for cache mount syntax | Always add at top of Dockerfile |
+
+---
+
+**Result:**  
+Your builds run faster, dependency downloads are reused, and Docker images remain lightweight and efficient 🚀
+
+---
+</details>
+
+<summary>Multi Stage</summary>
+<details>
+   # 🏗️ Using Multi-Stage Builds in Docker
+
+Multi-stage builds allow you to **use multiple FROM statements** in a single Dockerfile.  
+They are useful for building artifacts in one stage and copying only the necessary files to the final stage, resulting in **smaller, cleaner images**.
+
+---
+
+## 🧩 1. Why Use Multi-Stage Builds?
+
+**Benefits:**
+- ✅ **Smaller final images** (exclude build tools and unnecessary files)
+- ✅ **Cache-friendly** builds
+- ✅ **Separation of concerns**: build vs runtime
+- ✅ **Improved security**: final image can run as non-root
+
+---
+
+## 🐍 2. Python Example
+
+```dockerfile
+# Stage 1: Build
+FROM python:3.12-slim AS builder
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y build-essential
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --user -r requirements.txt
+
+# Copy application source code
+COPY . .
+
+# Stage 2: Final runtime image
+FROM python:3.12-slim
+WORKDIR /app
+
+# Copy installed dependencies from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application code
+COPY --from=builder /app /app
+
+# Add python to PATH
+ENV PATH=/root/.local/bin:$PATH
+
+CMD ["python", "app.py"]
+```
+
+**Result:**  
+Final image only contains the Python runtime, dependencies, and app code — no build tools.
+
+---
+
+## 🦴 3. Node.js Example
+
+```dockerfile
+# Stage 1: Build
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Copy package files first (cache dependencies)
+COPY package*.json ./
+RUN npm ci
+
+# Copy source code and build
+COPY . .
+RUN npm run build
+
+# Stage 2: Final runtime image
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+# Copy built files and node_modules from build stage
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+
+CMD ["node", "dist/index.js"]
+```
+
+**Benefits:**
+- `node_modules` and build artifacts are included without the full build toolchain.
+- Smaller and production-ready final image.
+
+---
+
+## 🏗️ 4. Go Example
+
+```dockerfile
+# Stage 1: Build
+FROM golang:1.23-alpine AS builder
+WORKDIR /src
+
+# Download dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source and build
+COPY . .
+RUN go build -o /app/main .
+
+# Stage 2: Final minimal image
+FROM alpine:3.20
+WORKDIR /app
+
+# Copy binary from build stage
+COPY --from=builder /app/main .
+
+CMD ["./main"]
+```
+
+**Result:**  
+Final image is tiny, containing only the Go binary and minimal OS libraries.
+
+---
+
+## ⚡ 5. Best Practices for Multi-Stage Builds
+
+1. **Use descriptive stage names** (`AS builder`, `AS runtime`) for readability.  
+2. **Separate dependencies from source code** to leverage caching.  
+3. **Only copy required artifacts** to the final stage (`COPY --from=builder`).  
+4. **Use minimal base images** for the final stage (Alpine, slim versions).  
+5. **Combine with BuildKit caching** for even faster builds.
+
+---
+
+## 🔑 6. Summary
+
+| Concept | Description |
+|---------|-------------|
+| Multi-stage build | Multiple `FROM` statements in one Dockerfile |
+| Builder stage | Contains build tools and dependencies |
+| Final stage | Minimal image containing only runtime and artifacts |
+| COPY --from | Copy specific files or directories from previous stages |
+
+---
+
+**Result:**  
+Multi-stage builds produce smaller, secure, and production-ready Docker images while keeping the build process flexible and cache-friendly. 🚀
 </details>
